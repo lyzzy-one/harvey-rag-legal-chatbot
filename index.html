@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Legal Case Predictor</title>
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', Arial, sans-serif; margin: 20px; }
+      .wrap { max-width: 900px; margin: 0 auto; }
+      textarea { width: 100%; height: 140px; padding: 10px; font-size: 14px; }
+      button { padding: 10px 14px; margin-right: 8px; }
+      .row { margin-top: 12px; }
+      pre { background: #f5f5f5; padding: 12px; white-space: pre-wrap; }
+      .items { margin-top: 8px; }
+      .item { padding: 8px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 8px; background: #fff; }
+      .item .score { color: #666; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h2>법률 사건 예측 데모</h2>
+      <div class="row">
+        <label for="query">사건 설명을 입력하세요</label>
+        <textarea id="query" placeholder="예: 감염병 관련 행정명령 위반 사건"></textarea>
+      </div>
+      <div class="row">
+        <label>서버 URL</label>
+        <input id="baseUrl" type="text" placeholder="http://127.0.0.1:8000" style="width: 320px;" />
+      </div>
+      <div class="row">
+        <label>Top K</label>
+        <input id="topk" type="number" value="5" min="1" max="20" />
+        <label>Max Tokens (RAG)</label>
+        <input id="maxtok" type="number" value="400" min="64" max="1024" />
+      </div>
+      <div class="row">
+        <button id="btnPredict">kNN 유사사례</button>
+        <button id="btnRag">RAG 요약</button>
+      </div>
+      <div class="row">
+        <h3>결과</h3>
+        <pre id="resultText"></pre>
+        <div class="items" id="items"></div>
+      </div>
+    </div>
+
+    <script>
+      function apiUrl(path) {
+        const input = document.getElementById('baseUrl');
+        const base = (input && input.value.trim()) || (location.protocol.startsWith('http') ? '' : 'http://127.0.0.1:8000');
+        return base ? base.replace(/\/$/, '') + path : path;
+      }
+
+      async function callApi(path, body) {
+        const url = apiUrl(path);
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!res.ok) throw new Error('API error: ' + res.status);
+        return res.json();
+      }
+
+      function renderItems(items) {
+        const wrap = document.getElementById('items');
+        wrap.innerHTML = '';
+        items.forEach(it => {
+          const div = document.createElement('div');
+          div.className = 'item';
+          const p = document.createElement('div');
+          p.textContent = it.text;
+          const s = document.createElement('div');
+          s.className = 'score';
+          s.textContent = 'score: ' + it.score.toFixed(4);
+          div.appendChild(p);
+          div.appendChild(s);
+          wrap.appendChild(div);
+        });
+      }
+
+      document.getElementById('btnPredict').addEventListener('click', async () => {
+        const query = document.getElementById('query').value.trim();
+        const top_k = parseInt(document.getElementById('topk').value, 10) || 5;
+        if (!query) return alert('질문을 입력하세요');
+        document.getElementById('resultText').textContent = '요청 중...';
+        try {
+          const data = await callApi('/predict', { query, top_k });
+          document.getElementById('resultText').textContent = JSON.stringify({ predicted_label: data.predicted_label }, null, 2);
+          renderItems(data.items || []);
+        } catch (e) {
+          document.getElementById('resultText').textContent = e.message;
+        }
+      });
+
+      document.getElementById('btnRag').addEventListener('click', async () => {
+        const query = document.getElementById('query').value.trim();
+        const top_k = parseInt(document.getElementById('topk').value, 10) || 5;
+        const max_tokens = parseInt(document.getElementById('maxtok').value, 10) || 400;
+        if (!query) return alert('질문을 입력하세요');
+        document.getElementById('resultText').textContent = '요청 중...';
+        try {
+          const data = await callApi('/predict_rag', { query, top_k, max_tokens });
+          document.getElementById('resultText').textContent = data.answer || '';
+          renderItems(data.items || []);
+        } catch (e) {
+          document.getElementById('resultText').textContent = e.message;
+        }
+      });
+
+      // 파일로 열렸을 때 기본 서버 URL 힌트 채우기
+      (function initBaseUrl() {
+        const input = document.getElementById('baseUrl');
+        if (input && !input.value && location.protocol === 'file:') {
+          input.value = 'http://127.0.0.1:8000';
+        }
+      })();
+    </script>
+  </body>
+</html>
+
+
